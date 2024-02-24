@@ -1,85 +1,93 @@
 #include <xc.h>
-#include <stdint.h>
 
-// Definiciones de pines
-#define ENCODER_A_PIN RB0
-#define ENCODER_B_PIN RB1
+// Definir pines del encoder
+#define EncoderA PORTBbits.RB0
+#define EncoderB PORTBbits.RB1
 
-// Variables globales
-volatile int16_t contador_total = 0;
-volatile uint16_t giros_derecha = 0;
-volatile uint16_t giros_izquierda = 0;
-volatile int16_t angulo_volante = 0;
+// Variables para guardar el estado anterior de las se馻les
+int EncoderA_prev = 0;
+int EncoderB_prev = 0;
 
-// L铆mites del volante
-// #define ANGULO_MAXIMO 180
-// #define ANGULO_MINIMO -180
+// Contadores de pulsos
+int PulsosA = 0;
+int PulsosB = 0;
 
-// Prototipos de funciones
+// Prototipo de funci髇
 void inicializar();
-void  SPI_Init(); 
 
-// Interrupci贸n
-void __interrupt() ISR();
-
+// Interrupci髇
+void __interrupt() ISR(void);
 
 void main() {
-    inicializar(); // Iniciaiza configuraci贸n entradas y salidas de PIC 
-    SPI_Init(); // Inicializa la interfaz SPI
-
+    inicializar();
+    
     while(1) {
-        PORTA = contador_total;
+       
+        // Verificar el estado de la interrupci髇 de EncoderA
+        if (EncoderA_prev == 0 && EncoderA == 1) {
+            // Activar el puerto RA0 para EncoderA
+            LATAbits.LATA0 = 1;
+        } else {
+            // Desactivar el puerto RA0 para EncoderA
+            LATAbits.LATA0 = 0;
+          }
+            
+        // Verificar el estado de la interrupci髇 de EncoderB
+        if (EncoderB_prev == 0 && EncoderB == 1) {
+           // Activar el puerto RA1 para EncoderB
+           LATAbits.LATA1 = 1;
+        } else {
+           // Desactivar el puerto RA1 para EncoderB
+           LATAbits.LATA1 = 0;
+        }
 
+        // Limpiar la bandera de interrupci髇
+        INTCONbits.RBIF = 0;
+        
     }
 }
 
-void inicializar() {
+void inicializar(){
     // Configurar puertos como entradas
-    TRISB = 0b00000011; // RB0 y RB1 como entradas
+    TRISBbits.TRISB0 = 1; // EncoderA
+    TRISBbits.TRISB1 = 1; // EncoderB
+    
+    // Configurar interrupci髇 por cambio de estado en PORTB
+    INTCONbits.RBIE = 1; // Habilitar la interrupci髇 por cambio de estado en PORTB
+    INTCONbits.RBIF = 0; // Limpiar la bandera de interrupci髇 inicialmente
+    INTCON2bits.RBPU = 0; // Habilitar las resistencias de pull-up en PORTB
+    
+    // Habilitar interrupciones globales
+    INTCONbits.GIE = 1;
 
-    // Configurar puerto A como salidas
-    TRISA = 0x00;
-
-    // Configurar interrupciones
-    INTCONbits.GIE = 1;   // Habilitar interrupciones globales
-    INTCONbits.INT0IE = 1; // Habilitar interrupci贸n INT0 (RB0)
-    INTCON2bits.INTEDG0 = 0; // Interrupci贸n en flanco de bajada para INT0
-    INTCON3bits.INT1IE = 1; // Habilitar interrupci贸n INT1 (RB1)
-    INTCON2bits.INTEDG1 = 0; // Interrupci贸n en flanco de bajada para INT1
+    // Configurar puertos A como salidas
+    TRISAbits.TRISA0 = 0; // RA0 para EncoderA
+    TRISAbits.TRISA1 = 0; // RA1 para EncoderB
 }
 
-
-void __interrupt() ISR() {
-    if(INTCONbits.INT0IF) { // Verificar si la interrupci贸n es de RB0
-        if(ENCODER_B_PIN == 1) {
-            contador_total++; // Sentido horario
-            giros_derecha++;
-        } else {
-            contador_total--; // Sentido antihorario
-            giros_izquierda++;
+void __interrupt() ISR(void) {
+    if (INTCONbits.RBIF) {
+        // Guardar el estado actual de las se馻les
+        int currentEncoderA = EncoderA;
+        int currentEncoderB = EncoderB;
+        
+        // Verificar el estado anterior y actual para determinar la direcci髇 del giro
+        if (EncoderA_prev == 0 && EncoderB_prev == 0) {
+            if (currentEncoderA == 1 && currentEncoderB == 0) {
+                // Giro a la derecha
+                PulsosA++;
+            } else if (currentEncoderA == 0 && currentEncoderB == 1) {
+                // Giro a la izquierda
+                PulsosB++;
+            }
         }
-        INTCONbits.INT0IF = 0; // Limpiar bandera de interrupci贸n INT0
+        
+        // Actualizar el estado anterior
+        EncoderA_prev = currentEncoderA;
+        EncoderB_prev = currentEncoderB;
+        
+        // Limpiar la bandera de interrupci髇
+        INTCONbits.RBIF = 0;
     }
-
-    if(INTCON3bits.INT1IF) { // Verificar si la interrupci贸n es de RB1
-        if(ENCODER_A_PIN == 0) {
-            contador_total++; // Sentido horario
-            giros_derecha++;
-        } else {
-            contador_total--; // Sentido antihorario
-            giros_izquierda++;
-        }
-        INTCON3bits.INT1IF = 0; // Limpiar bandera de interrupci贸n INT1
-    }
-
-    // // Limitar el rango de 谩ngulo del volante
-    // angulo_volante = contador_total;
-
-    // if (angulo_volante > ANGULO_MAXIMO) {
-    //     angulo_volante = ANGULO_MAXIMO;
-    //     contador_total = ANGULO_MAXIMO;
-    // } else if (angulo_volante < ANGULO_MINIMO) {
-    //     angulo_volante = ANGULO_MINIMO;
-    //     contador_total = ANGULO_MINIMO;
-    // }
 }
+

@@ -5739,90 +5739,88 @@ unsigned char __t3rd16on(void);
 
 
 
-
-volatile int16_t contador_total = 0;
-volatile uint16_t giros_derecha = 0;
-volatile uint16_t giros_izquierda = 0;
-volatile int16_t angulo_volante = 0;
+int EncoderA_prev = 0;
+int EncoderB_prev = 0;
 
 
-
-
+int PulsosA = 0;
+int PulsosB = 0;
 
 
 void inicializar();
-void SPI_Init();
 
 
-void __attribute__((picinterrupt(("")))) ISR();
-
+void __attribute__((picinterrupt(("")))) ISR(void);
 
 void main() {
     inicializar();
-    SPI_Init();
 
     while(1) {
-        PORTA = contador_total;
+
+
+        if (EncoderA_prev == 0 && PORTBbits.RB0 == 1) {
+
+            LATAbits.LATA0 = 1;
+        } else {
+
+            LATAbits.LATA0 = 0;
+          }
+
+
+        if (EncoderB_prev == 0 && PORTBbits.RB1 == 1) {
+
+           LATAbits.LATA1 = 1;
+        } else {
+
+           LATAbits.LATA1 = 0;
+        }
+
+
+        INTCONbits.RBIF = 0;
 
     }
 }
 
-void inicializar() {
+void inicializar(){
 
-    TRISB = 0b00000011;
+    TRISBbits.TRISB0 = 1;
+    TRISBbits.TRISB1 = 1;
 
 
-    TRISA = 0x00;
+    INTCONbits.RBIE = 1;
+    INTCONbits.RBIF = 0;
+    INTCON2bits.RBPU = 0;
 
 
     INTCONbits.GIE = 1;
-    INTCONbits.INT0IE = 1;
-    INTCON2bits.INTEDG0 = 0;
-    INTCON3bits.INT1IE = 1;
-    INTCON2bits.INTEDG1 = 0;
+
+
+    TRISAbits.TRISA0 = 0;
+    TRISAbits.TRISA1 = 0;
 }
 
-void SPI_Init() {
+void __attribute__((picinterrupt(("")))) ISR(void) {
+    if (INTCONbits.RBIF) {
+
+        int currentEncoderA = PORTBbits.RB0;
+        int currentEncoderB = PORTBbits.RB1;
 
 
+        if (EncoderA_prev == 0 && EncoderB_prev == 0) {
+            if (currentEncoderA == 1 && currentEncoderB == 0) {
 
+                PulsosA++;
+            } else if (currentEncoderA == 0 && currentEncoderB == 1) {
 
-    SSPSTATbits.SMP = 1;
-    SSPSTATbits.CKE = 1;
-
-
-    SSPCON1bits.SSPEN = 1;
-    SSPCON1bits.CKP = 0;
-    SSPCON1bits.SSPM = 0b0000;
-
-
-    SSPCON2bits.SEN = 0;
-    SSPCON2bits.RSEN = 0;
-    SSPCON2bits.PEN = 0;
-}
-
-
-void __attribute__((picinterrupt(("")))) ISR() {
-    if(INTCONbits.INT0IF) {
-        if(RB1 == 1) {
-            contador_total++;
-            giros_derecha++;
-        } else {
-            contador_total--;
-            giros_izquierda++;
+                PulsosB++;
+            }
         }
-        INTCONbits.INT0IF = 0;
-    }
 
-    if(INTCON3bits.INT1IF) {
-        if(RB0 == 0) {
-            contador_total++;
-            giros_derecha++;
-        } else {
-            contador_total--;
-            giros_izquierda++;
-        }
-        INTCON3bits.INT1IF = 0;
+
+        EncoderA_prev = currentEncoderA;
+        EncoderB_prev = currentEncoderB;
+
+
+        INTCONbits.RBIF = 0;
     }
-# 104 "main.c"
 }
